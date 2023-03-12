@@ -1,57 +1,77 @@
 import { IncomingMessage, ServerResponse } from "http";
-import { MongoClient, MongoClientOptions } from "mongodb";
-
+import { MongoClient } from "mongodb";
+import { profilesRouter, fetchProfiles } from "./profiles";
+import url from "node:url";
 const http = require("node:http");
-
 const hostname: string = "127.0.0.1";
 const port: number = 3000;
+import { URL } from "url";
 
 // Connection URL
-const url = "mongodb://localhost:27017";
-
-// Database Name
-const dbName = "test";
+const dbUrl = "mongodb://localhost:27017";
 
 // Create a new MongoClient
-const client = new MongoClient(url);
+const client = new MongoClient(dbUrl);
 
-async function run() {
-  try {
-    // Connect the client to the server (optional starting in v4.7)
-    await client.connect();
-    // Establish and verify connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("Connected successfully to server");
+const server = http
+  .createServer
+  // async (req: IncomingMessage, res: ServerResponse) => {
+  // if (req.url === "/health") {
+  //   res.statusCode = 200;
+  //   res.setHeader("Content-Type", "text/plain");
+  //   res.end("OK\n");
+  // } else if (req.url === "/profiles" && req.method === "GET") {
+  //   res.statusCode = 200;
+  //   res.setHeader("Content-Type", "application/json");
+  //   const profiles = await fetchProfiles(client);
+  //   res.end(profiles);
+  //   // }
+  //   // else if (req.url === "/profiles" && req.method === "POST") {
+  //   //   res.statusCode = 200;
+  //   //   res.setHeader("Content-Type", "application/json");
+  //   //   const profiles = await fetchProfiles(client);
+  //   //   res.end(profiles);
+  // } else {
+  //   res.statusCode = 404;
+  //   res.setHeader("Content-Type", "text/plain");
+  //   res.end("Dead end\n");
+  // }
+  // }
+  ();
 
-    const profiles = await client
-      .db("test")
-      .collection("profiles")
-      .find()
-      .toArray();
-    console.log("profiles", profiles);
-  } finally {
-    // Ensures that the client will close when you finish/error
-    await client.close();
-  }
-}
-run().catch(console.dir);
+server.on("request", async (req: IncomingMessage, res: ServerResponse) => {
+  const { method, headers } = req;
 
-const server = http.createServer(
-  (req: IncomingMessage, res: ServerResponse) => {
-    if (req.url === "/health") {
-      res.statusCode = 200;
-      res.setHeader("Content-Type", "text/plain");
-      res.end("OK\n");
-    } else if (req.url === "/users") {
-      res.statusCode = 501;
-      res.setHeader("Content-Type", "text/plain");
-      res.end("Not implemented\n");
-    }
-    res.statusCode = 404;
-    res.setHeader("Content-Type", "text/plain");
-    res.end("Dead end\n");
-  }
-);
+  // const parsedUrl = url.parse(reqUrl, true);
+  // const queryString = parsedUrl.query;
+
+  const profilesRoutes = profilesRouter;
+
+  const { pathname } = new URL(req.url!, `http://${req.headers.host}`);
+  const requestedController = profilesRoutes[pathname];
+  // console.log("req.body", req.body);
+
+  let requestBody = Buffer.from([]);
+
+  req.on("data", (chunk) => {
+    requestBody = Buffer.concat([requestBody, chunk]);
+  });
+  req.on("end", async () => {
+    const body = await JSON.parse(requestBody.toString());
+    console.log("body", body);
+
+    const respondFromController = await requestedController(
+      { pathname, method, headers },
+      client
+    );
+
+    const { contentType, statusCode, payload } = respondFromController;
+
+    res.setHeader("Content-Type", contentType);
+    res.writeHead(statusCode);
+    res.end(payload);
+  });
+});
 
 server.listen(port, hostname, () => {
   console.log(`Server running at http://${hostname}:${port}/`);
