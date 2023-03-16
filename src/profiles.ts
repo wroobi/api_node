@@ -74,9 +74,8 @@ export async function createProfile(client: MongoClient, profile: Profile) {
 
     const db = client.db(dbName);
     const collection = db.collection("profiles");
-
     const { insertedId } = await collection.insertOne(profile);
-    return JSON.stringify(insertedId); // convert the result to JSON string
+    return JSON.stringify({ _id: insertedId }); // convert the result to JSON string
   } catch (err) {
     console.error("Failed to create profile:", err);
     throw err;
@@ -109,7 +108,8 @@ export async function deleteProfile(
 
 export const profilesRouter = async (
   req: IncomingMessage,
-  client: MongoClient
+  client: MongoClient,
+  requestBody: any
 ) => {
   const { pathname } = new URL(req.url!, `http://${req.headers.host}`);
 
@@ -127,7 +127,15 @@ export const profilesRouter = async (
         contentType: "application/json",
         payload: profile,
       };
-
+    case "/profiles":
+      if (req.method === "POST") {
+        const id = await createProfile(client, JSON.parse(requestBody));
+        return {
+          statusCode: 200,
+          contentType: "application/json",
+          payload: id,
+        };
+      }
     default:
       const payload = JSON.stringify({ message: "dead end" });
       return {
