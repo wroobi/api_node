@@ -1,14 +1,14 @@
 import { MongoClient, ObjectId } from "mongodb";
 import { IncomingMessage, ServerResponse } from "http";
+import { type } from "os";
 
 // Database Name
 const dbName = "test";
 
-export async function fetchProfiles(client: MongoClient) {
+async function fetchProfiles(client: MongoClient) {
   try {
     await client.connect();
     console.log("Connected to MongoDB");
-
     const db = client.db(dbName);
     const collection = db.collection("profiles");
 
@@ -22,7 +22,7 @@ export async function fetchProfiles(client: MongoClient) {
     };
 
     const profiles = await collection.find().project(project).toArray();
-    return JSON.stringify(profiles); // convert the result to JSON string
+    return JSON.stringify({ profiles: profiles }); // convert the result to JSON string
   } catch (err) {
     console.error("Failed to fetch profiles:", err);
     throw err;
@@ -31,6 +31,39 @@ export async function fetchProfiles(client: MongoClient) {
     console.log("Disconnected from MongoDB");
   }
 }
+
+async function fetchProfile(client: MongoClient, id: string) {
+  try {
+    await client.connect();
+    console.log("Connected to MongoDB");
+    const db = client.db(dbName);
+    const collection = db.collection("profiles");
+    const project = {
+      _id: 1,
+      "name.first_name": 1,
+      "name.middle_name": 1,
+      "name.last_name": 1,
+      email: 1,
+      phone_number: 1,
+      gender: 1,
+      is_deleted: 1,
+    };
+
+    const profile = await collection.findOne(
+      { _id: new ObjectId(id) },
+      { projection: project }
+    );
+
+    return JSON.stringify(profile); // convert the result to JSON string
+  } catch (err) {
+    console.error("Failed to fetch profile:", err);
+    throw err;
+  } finally {
+    await client.close();
+    console.log("Disconnected from MongoDB");
+  }
+}
+
 interface Profile {
   name: string;
 }
@@ -60,7 +93,6 @@ export async function deleteProfile(
   try {
     await client.connect();
     console.log("Connected to MongoDB");
-
     const db = client.db(dbName);
     const collection = db.collection("profiles");
 
@@ -74,43 +106,34 @@ export async function deleteProfile(
     console.log("Disconnected from MongoDB");
   }
 }
-interface ProfilesRouter {
-  [key: string]: Function;
-  "/profiles": Function;
-  "/notFound": Function;
-}
 
-interface reqData {
-  method: IncomingMessage["method"];
-  pathname: string;
-  headers: object;
-}
+export const profilesRouter = async (
+  req: IncomingMessage,
+  client: MongoClient
+) => {
+  const { pathname } = new URL(req.url!, `http://${req.headers.host}`);
 
-export const profilesRouter: ProfilesRouter = {
-  "/profiles": async (data: reqData, client: MongoClient) => {
-    switch (data.method) {
-      case "GET":
-        const profiles = await fetchProfiles(client);
-        return {
-          statusCode: 200,
-          contentType: "application/json",
-          payload: profiles,
-        };
-      case "POST":
-        const profile = await createProfile(client, { name: "zorro" });
-        return {
-          statusCode: 200,
-          contentType: "application/json",
-          payload: profile,
-        };
-    }
-  },
-  "/notFound": () => {
-    const payload = JSON.stringify({ message: "dead end" });
-    return {
-      statusCode: 404,
-      contentType: "application/json",
-      payload,
-    };
-  },
+  const routeName = pathname.match(/\/profiles\/([0-9]+)/)
+    ? "/profiles/:id"
+    : pathname;
+
+  switch (routeName) {
+    case "/profiles/:id":
+      const id = pathname.split("/")[2];
+
+      const profile = await fetchProfile(client, id);
+      return {
+        statusCode: 200,
+        contentType: "application/json",
+        payload: profile,
+      };
+
+    default:
+      const payload = JSON.stringify({ message: "dead end" });
+      return {
+        statusCode: 404,
+        contentType: "application/json",
+        payload,
+      };
+  }
 };
