@@ -1,6 +1,5 @@
 import { MongoClient, ObjectId } from "mongodb";
-import { IncomingMessage, ServerResponse } from "http";
-import { type } from "os";
+import { IncomingMessage } from "http";
 
 // Database Name
 const dbName = "test";
@@ -67,6 +66,7 @@ async function fetchProfile(client: MongoClient, id: string) {
 interface Profile {
   name: string;
 }
+
 export async function createProfile(client: MongoClient, profile: Profile) {
   try {
     await client.connect();
@@ -134,6 +134,14 @@ export const profilesRouter = async (
           statusCode: 200,
           contentType: "application/json",
           payload: id,
+        };
+      }
+      if (req.method === "GET") {
+        const profiles = await fetchProfiles(client);
+        return {
+          statusCode: 200,
+          contentType: "application/json",
+          payload: profiles,
         };
       }
     default:
